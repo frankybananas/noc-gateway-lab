@@ -1,0 +1,49 @@
+# Example Prometheus alert rules for NOC-Gateway.
+# Merge the `groups` block into your existing monitoring stack's alerts.yml,
+# or append this file under rule_files in prometheus.yml (adjust the path).
+
+groups:
+  - name: noc-gateway
+    rules:
+      - alert: FeedSilentDuringMarketHours
+        # Only pages when the feed is quiet AND the US market is open.
+        # Guards against the classic "weekend page" / "Saturday 3am alert".
+        expr: (time() - gateway_feed_last_message_timestamp_seconds) > 60 and market_open == 1
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "Market data feed has not received a message for 60s during US market hours"
+          runbook_url: "https://github.com/frankybananas/noc-gateway-lab/blob/main/docs/RUNBOOK.md#inc-1-feed-silent-no-market-data-arriving"
+
+      - alert: HighConsumerTimeLag
+        # Time lag is trim-proof (unlike the entry-count lag) and is the
+        # correct backpressure signal. 5s means the consumer is materially
+        # behind during active trading; 10s is a page.
+        expr: fix_consumer_time_lag_seconds > 5
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "FIX consumer is more than 5s behind the stream"
+          runbook_url: "https://github.com/frankybananas/noc-gateway-lab/blob/main/docs/RUNBOOK.md#inc-3-redis-stream-depth-growing-backpressure"
+
+      - alert: FIXSessionDown
+        # Session down is only a concern while the feed is active. Outside
+        # market hours a demo client may simply not be connected.
+        expr: fix_session_state == 0 and gateway_connection_state == 3 and market_open == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No FIX client logged on despite a live market data feed"
+
+      - alert: ConnectionNotSubscribed
+        # Catches the auth-ok-but-subscription-failed state and other flaps.
+        expr: gateway_connection_state < 3 and gateway_connection_state > 0
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alpaca WS connected but not in the subscribed state"
+

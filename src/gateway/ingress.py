@@ -20,9 +20,15 @@ Design notes:
 """
 
 import asyncio
+import datetime
 import json
 import random
 import time
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None  # pragma: no cover
 
 import redis.asyncio as aioredis
 import websockets
@@ -67,6 +73,11 @@ STREAM_DEPTH = Gauge(
 CHAOS_DROPPED = Counter(
     "gateway_chaos_dropped_total", "Messages intentionally dropped by chaos injection"
 )
+MARKET_OPEN = Gauge(
+    "market_open",
+    "US equity market hours (1 = open, 0 = closed). Used to gate staleness/"
+    "data-loss alerts so a quiet Saturday does not page the on-call.",
+)
 
 
 async def stream_depth_sampler(r: aioredis.Redis) -> None:
@@ -77,6 +88,32 @@ async def stream_depth_sampler(r: aioredis.Redis) -> None:
         except Exception as exc:
             log.warning("stream depth sample failed: %s", exc)
         await asyncio.sleep(5)
+
+
+async def market_hours_sampler() -> None:
+    """Update the market_open gauge every 15s.
+
+    Uses US/Eastern (NYSE) clock: Mon-Fri 09:30-16:00 ET.
+    If the host lacks tzdata, the gauge stays NaN to fail visibly rather than
+    silently default healthy. A production NOC should use an exchange-trading-
+    calendar service (CME/CBOE publish holiday schedules) rather than wall
+    clock, but wall clock is the right 80% solution for a lab.
+    """
+    if ZoneInfo is None:
+        log.warning("zoneinfo data unavailable; market_open metric disabled")
+        MARKET_OPEN.set(float("nan"))
+        return
+    tz = ZoneInfo("America/New_York")
+    while True:
+        try:
+            now = datetime.datetime.now(tz)
+            is_weekday = now.weekday() < 5
+            is_open_hours = now.replace(hour=9, minute=30, second=0, microsecond=0) <= now < now.replace(hour=16, minute=0, second=0, microsecond=0)
+            MARKET_OPEN.set(1.0 if (is_weekday and is_open_hours) else 0.0)
+        except Exception as exc:
+            log.warning("market hours sample failed: %s", exc)
+            MARKET_OPEN.set(float("nan"))
+        await asyncio.sleep(15)
 
 
 def normalize(msg: dict) -> dict | None:
@@ -183,6 +220,7 @@ async def main() -> None:
     chaos = ChaosState()
     asyncio.create_task(poll_chaos_flags(r, chaos))
     asyncio.create_task(stream_depth_sampler(r))
+    asyncio.create_task(market_hours_sampler())
 
     backoff = 1.0
     while True:

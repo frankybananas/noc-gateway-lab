@@ -43,13 +43,24 @@
     },
     {
       "id": 3, "type": "stat", "title": "Feed Staleness (s)",
-      "description": "Seconds since last data message. Alert if > 60s during market hours.",
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "description": "Seconds since last data message. Alert if > 60s during market hours only (see market_open gauge).",
+      "gridPos": { "h": 4, "w": 3, "x": 8, "y": 0 },
       "targets": [{ "expr": "time() - gateway_feed_last_message_timestamp_seconds" }],
       "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [
         { "color": "green", "value": null },
         { "color": "yellow", "value": 30 },
         { "color": "red", "value": 60 } ] } } }
+    },
+    {
+      "id": 99, "type": "stat", "title": "US Market Open",
+      "description": "1 = NYSE regular hours (09:30-16:00 ET, Mon-Fri), 0 = closed. Staleness alerts are gated on this to avoid weekend pages.",
+      "gridPos": { "h": 4, "w": 1, "x": 11, "y": 0 },
+      "targets": [{ "expr": "market_open" }],
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": {
+          "0": { "text": "CLOSED", "color": "blue" },
+          "1": { "text": "OPEN", "color": "green" } } }
+      ] } }
     },
     {
       "id": 4, "type": "stat", "title": "Active Chaos Faults",
