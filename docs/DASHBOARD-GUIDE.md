@@ -151,7 +151,7 @@ colors instantly.
 - **The `~` in MAXLEN:** approximate trimming — Redis trims in whole
   macro-nodes rather than exactly, trading a few extra entries (100033 vs
   100000) for much cheaper trims. Knowing why the number isn't exactly 100000
-  is a nice depth-of-understanding flex.
+  is a useful implementation detail to monitor.
 
 ### FIX Consumer Lag
 
@@ -166,7 +166,7 @@ colors instantly.
   the most-watched metrics in any real trading/data platform. If you learn one
   concept deeply from this project, make it this one: **the health of a
   pipeline is measured at the consumer, not the buffer.**
-- **Failure signature:** in the game day's latency injection, watch lag climb
+- **Failure signature:** during a latency fault injection, watch lag climb
   while the fault is active and drain (steep downslope) after it expires —
   that drain rate is your consumer's catch-up capacity, i.e. your headroom.
 
@@ -212,12 +212,11 @@ colors instantly.
   Watch the *gap* between p50 and p99: a widening gap with a flat p50 means
   jitter, not load — different root causes (GC pauses, CPU steal, bursty
   frames) than uniform slowdown.
-- **Why it's 10-30ms, honestly:** each message in a frame does an awaited
+- **Why it is 10-30ms:** each message in a frame does an awaited
   Redis XADD round-trip; frames arrive in batches; Python on a shared VPS has
   CPU steal. A C++ gateway on dedicated hardware measures this path in
   microseconds. Knowing *where your latency comes from* matters more than the
-  absolute number — and saying exactly that in an interview reads as maturity,
-  not weakness.
+  absolute number — the source of the latency matters more than the absolute value.
 
 ### End-to-End Tick SLA (WS ingest → FIX send)
 
@@ -236,7 +235,7 @@ colors instantly.
   timestamping; CME timestamps are legally load-bearing.
 - **Why the panel is empty when no FIX client is connected:** no session ⇒
   no 35=X sends ⇒ no observations ⇒ no data. "No data" and "zero latency"
-  are different things, and the panel honestly shows which one is true.
+  are different things, and the panel clearly shows which one is true.
 - **This is the headline SLA.** If you had to pick one number that defines
   this system's service quality, it's this p99. Chaos latency injections show
   up here first and biggest.
@@ -248,7 +247,7 @@ colors instantly.
   at cap + lag at 0 = nominal. Depth at cap + lag climbing = slow consumer.
   Depth falling toward 0 = producer stopped. One panel, three distinct
   failure modes distinguishable at a glance.
-- **What to watch during game day:** the latency fault makes lag climb
+- **What to watch during a chaos drill:** the latency fault makes lag climb
   linearly, then drain after expiry. The drain slope is your catch-up
   capacity — if injected load ever made lag grow *without bound*, you'd have
   discovered your throughput ceiling. (That experiment — find the drop/latency

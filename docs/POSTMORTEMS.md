@@ -1,15 +1,15 @@
-# Postmortems & Game Day Findings
+# Postmortems & Chaos Drill Findings
 
 Blameless postmortem records for issues found operating this system. Kept
 deliberately: what broke, why the monitoring did or didn't catch it, and what
 changed as a result. Each finding was validated (or is scheduled for
-re-validation) in a subsequent chaos game day.
+re-validation) in a subsequent chaos chaos drill.
 
 ---
 
 ## PM-1: End-to-end latency histogram clamped at its top bucket
 
-**Date found:** 2026-08-05 (chaos game day #1, live market hours)
+**Date found:** 2026-08-05 (chaos chaos drill #1, live market hours)
 
 **What happened:** During a 200 ms latency injection, the e2e SLA panel showed
 p99 pinned at *exactly* 2.5 s for the duration of the fault.
@@ -38,7 +38,7 @@ every histogram against fault conditions, not just steady state.
 
 ## PM-2: Consumer lag gauge read 0 ("healthy") during heavy load
 
-**Date found:** 2026-08-05 (chaos game day #1)
+**Date found:** 2026-08-05 (chaos chaos drill #1)
 
 **What happened:** While the latency fault pushed e2e latency past 2.5 s, the
 FIX consumer lag panel read 0 throughout — physically implausible: a consumer
@@ -46,7 +46,7 @@ sleeping 200 ms per tick at ~150 msg/s must fall behind.
 
 **Why the number was wrong:** Redis's `XINFO GROUPS ... lag` field is reported
 as **null** when `MAXLEN` trimming removes entries the group never read — the
-exact count becomes uncomputable, so Redis honestly declines to report it.
+exact count becomes uncomputable, so Redis declines to report it.
 Our sampler coerced that null to 0 (`group.get("lag") or 0`). The sensor
 didn't fail loudly; it **failed toward "healthy"** — the worst possible
 failure mode for a monitoring instrument.
@@ -57,7 +57,7 @@ alert built on it was silently disarmed during market hours (trimming is
 continuous once the stream reaches its cap).
 
 **Fix (two parts):**
-1. Report honestly: null lag now surfaces as NaN (panel shows *no data* —
+1. Preserve null: null lag now surfaces as NaN (panel shows *no data* —
    "I don't know" instead of "all good").
 2. Added a trim-proof metric: `fix_consumer_time_lag_seconds`, derived from
    stream ID timestamps (`<ms>-<seq>`): age of newest stream entry minus age
@@ -113,5 +113,5 @@ this was predicted; all of it was discovered.
 
 | Date | Drill | Result |
 |------|-------|--------|
-| 2026-08-05 | Game day #1 (latency / drop / WS disconnect / FIX kill) | All faults recovered; PM-1, PM-2, F-1, F-2 discovered |
-| 2026-08-06 | Game day #2 (same script, post-fix) | *scheduled — expect: e2e p99 resolves above 2.5 s; time lag visibly climbs and drains during latency fault* |
+| 2026-08-05 | Chaos drill #1 (latency / drop / WS disconnect / FIX kill) | All faults recovered; PM-1, PM-2, F-1, F-2 discovered |
+| 2026-08-06 | Chaos drill #2 (same script, post-fix) | *scheduled — expect: e2e p99 resolves above 2.5 s; time lag visibly climbs and drains during latency fault* |

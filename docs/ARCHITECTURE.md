@@ -47,7 +47,7 @@ show impossible negative spikes. `perf_counter()` is monotonic — correct for
 *durations within one process*. But the end-to-end SLA spans two processes
 (ingress -> fix-engine), and monotonic clocks aren't comparable across
 processes, so ticks carry a wall-clock `time_ns()` ingest timestamp instead.
-Knowing when each is appropriate is a classic telemetry interview question.
+Knowing when each is appropriate is a key telemetry design decision.
 
 ### Why Redis Streams instead of a plain pub/sub or a direct call?
 1. **Backpressure isolation:** if the FIX consumer stalls, the ingress keeps
@@ -64,7 +64,7 @@ FIX is the lingua franca of exchange connectivity (CME iLink is FIX-based).
 Implementing Logon/Heartbeat/sequence numbers demonstrates fluency with the
 session-layer concepts NOC analysts troubleshoot daily: sequence gaps,
 heartbeat timeouts, session flapping. This is a simulation, not a certified
-engine — stated honestly, that reads better in interviews.
+engine.
 
 ### Why chaos flags in Redis with TTLs?
 Faults must reach two separate processes; Redis is already the shared fabric.

@@ -127,7 +127,7 @@ Conventions:
 
 ---
 
-## Planned Chaos Drill (game day)
+## Planned Chaos Drill
 
 Run during market hours, watch the dashboard live:
 

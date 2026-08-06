@@ -40,13 +40,13 @@ CONSUMER_TIME_LAG = Gauge(
     "fix_consumer_time_lag_seconds",
     "Age gap between the newest stream entry and the newest entry delivered to "
     "the fix-engine group, derived from stream ID timestamps. Survives MAXLEN "
-    "trimming (added after the 2026-08-05 game day, when the entry-count lag "
-    "read 0 under load because Redis reported it as null).",
+    "trimming (added after observing that the entry-count lag could read null "
+    "under load when MAXLEN trimming made the exact count uncomputable).",
 )
 E2E_LATENCY = Histogram(
     "fix_end_to_end_latency_seconds",
     "Tick SLA: WS ingest timestamp to FIX message send",
-    # Upper buckets extended after the 2026-08-05 game day: p99 clamped at the
+    # Upper buckets extended after a chaos drill showed p99 clamped at the
     # then-largest bucket (2.5s) during a latency fault, hiding how bad the
     # tail really was. Buckets must exceed the worst latency you need to SEE.
     buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
@@ -233,9 +233,9 @@ class FixEngine:
                 for group in await self.redis.xinfo_groups(config.STREAM_KEY):
                     if group.get("name") != config.CONSUMER_GROUP:
                         continue
-                    # Entry-count lag: report honestly. Redis returns null when
+                    # Entry-count lag: preserve null. Redis returns null when
                     # trimming makes the count uncomputable; coercing that to 0
-                    # made the sensor "fail toward healthy" during the game day.
+                    # made the sensor "fail toward healthy" during a chaos drill.
                     lag = group.get("lag")
                     CONSUMER_LAG.set(float("nan") if lag is None else lag)
                     # Time lag from ID timestamps: trim-proof, and reads 0 when

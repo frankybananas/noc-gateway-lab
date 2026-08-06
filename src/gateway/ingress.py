@@ -8,7 +8,7 @@ Responsibilities:
     connection state, feed staleness, and stream depth.
   * Honor chaos faults (added latency, message drops, forced disconnects).
 
-Design notes (interview talking points):
+Design notes:
   * asyncio: network-bound workload; blocking I/O would drop packets.
   * time.perf_counter(): monotonic, immune to NTP clock steps; time.time()
     would produce negative latency spikes after clock sync.

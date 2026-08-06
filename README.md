@@ -170,7 +170,7 @@ Full details and design rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 | Observability | Prometheus counters/gauges/histograms, Grafana SLA dashboards, feed-staleness alerting |
 | Chaos engineering | API-injected latency / message loss / session kills, TTL-bounded faults, automatic Grafana annotations |
 | Linux operations | Hardened systemd units, non-root service user, localhost-only binding, secrets via EnvironmentFile |
-| Incident response | [NOC runbook](docs/RUNBOOK.md) with 6 detect→diagnose→resolve procedures, validated by chaos game days |
+| Incident response | [NOC runbook](docs/RUNBOOK.md) with 6 detect→diagnose→resolve procedures, validated by chaos drills |
 
 ---
 
