@@ -1,0 +1,28 @@
+# Redis Streams message bus for NOC-Gateway.
+# Separate compose project from the monitoring stack (separation of concerns).
+# Bound to localhost only: never exposed to the internet.
+#
+#   docker compose -f docker-compose.redis.yml up -d
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: noc-gateway-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis-data:

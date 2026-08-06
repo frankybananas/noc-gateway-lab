@@ -1,0 +1,28 @@
+[Unit]
+Description=NOC-Gateway market data ingress (Alpaca WS -> Redis Streams)
+After=network-online.target docker.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=gateway
+Group=gateway
+EnvironmentFile=/etc/noc-gateway/gateway.env
+Environment=PYTHONPATH=/opt/noc-gateway/src
+WorkingDirectory=/opt/noc-gateway
+ExecStart=/opt/noc-gateway/venv/bin/python -m gateway.ingress
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

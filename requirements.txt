@@ -1,0 +1,7 @@
+websockets>=12.0,<14
+prometheus-client>=0.20,<1
+redis>=5.0,<6
+fastapi>=0.111,<1
+uvicorn>=0.30,<1
+simplefix>=1.0.17,<2
+httpx>=0.27,<1

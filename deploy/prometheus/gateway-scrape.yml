@@ -1,0 +1,34 @@
+# Scrape jobs for the NOC-Gateway services. Merge these into the existing
+# monitoring stack's prometheus.yml under `scrape_configs:`.
+#
+# The gateway services bind to 127.0.0.1 on the HOST, so Prometheus (running
+# in Docker) reaches them via host.docker.internal. That requires this on the
+# prometheus service in the monitoring compose file:
+#
+#   extra_hosts:
+#     - "host.docker.internal:host-gateway"
+
+  - job_name: "gateway-ingress"
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["host.docker.internal:9101"]
+        labels:
+          service: "noc-gateway"
+          component: "ingress"
+
+  - job_name: "fix-engine"
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["host.docker.internal:9102"]
+        labels:
+          service: "noc-gateway"
+          component: "fix-engine"
+
+  - job_name: "chaos-api"
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:9103"]
+        labels:
+          service: "noc-gateway"
+          component: "chaos"

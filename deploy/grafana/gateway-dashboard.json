@@ -1,0 +1,136 @@
+{
+  "title": "Market Data Gateway (NOC-Gateway-Lab)",
+  "uid": "noc-gateway",
+  "tags": ["noc-gateway", "market-data"],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "name": "Chaos Events",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "iconColor": "red",
+        "type": "tags",
+        "tags": ["chaos"]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Feed Connection State",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [{ "expr": "gateway_connection_state", "legendFormat": "state" }],
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": {
+          "0": { "text": "DOWN", "color": "red" },
+          "1": { "text": "CONNECTED", "color": "yellow" },
+          "2": { "text": "AUTHED", "color": "yellow" },
+          "3": { "text": "SUBSCRIBED", "color": "green" } } }
+      ] } }
+    },
+    {
+      "id": 2, "type": "stat", "title": "FIX Session State",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [{ "expr": "fix_session_state", "legendFormat": "state" }],
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": {
+          "0": { "text": "DISCONNECTED", "color": "red" },
+          "1": { "text": "CONNECTED", "color": "yellow" },
+          "2": { "text": "LOGGED ON", "color": "green" } } }
+      ] } }
+    },
+    {
+      "id": 3, "type": "stat", "title": "Feed Staleness (s)",
+      "description": "Seconds since last data message. Alert if > 60s during market hours.",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [{ "expr": "time() - gateway_feed_last_message_timestamp_seconds" }],
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null },
+        { "color": "yellow", "value": 30 },
+        { "color": "red", "value": 60 } ] } } }
+    },
+    {
+      "id": 4, "type": "stat", "title": "Active Chaos Faults",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [{ "expr": "chaos_active_faults" }],
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } }
+    },
+    {
+      "id": 5, "type": "stat", "title": "Stream Depth (md.ticks)",
+      "description": "XACK does not delete entries: depth saturates at MAXLEN (~100k) during market hours by design. Backpressure signal = consumer lag, not depth.",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "targets": [{ "expr": "gateway_stream_depth" }],
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null } ] } } }
+    },
+    {
+      "id": 6, "type": "stat", "title": "FIX Consumer Time Lag",
+      "description": "Age gap between newest stream entry and newest entry delivered to the FIX engine, from stream ID timestamps. Trim-proof (the entry-count lag reads null under MAXLEN trimming).",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "targets": [{ "expr": "fix_consumer_time_lag_seconds" }],
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null },
+        { "color": "yellow", "value": 2 },
+        { "color": "red", "value": 10 } ] } } }
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Message Rate by Symbol / Type (msg/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{
+        "expr": "sum by (symbol, msg_type) (rate(gateway_msgs_received_total[1m]))",
+        "legendFormat": "{{symbol}} {{msg_type}}"
+      }]
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Processing Latency Percentiles (ingress)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(gateway_processing_latency_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_processing_latency_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_processing_latency_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "End-to-End Tick SLA (WS ingest -> FIX send)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(fix_end_to_end_latency_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(fix_end_to_end_latency_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(fix_end_to_end_latency_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 13, "type": "timeseries", "title": "Stream Depth & Consumer Lag (backpressure)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "gateway_stream_depth", "legendFormat": "stream depth" },
+        { "expr": "fix_consumer_lag", "legendFormat": "consumer lag (entries, null under trim)" },
+        { "expr": "fix_consumer_time_lag_seconds * 1000", "legendFormat": "consumer time lag (ms)" }
+      ]
+    },
+    {
+      "id": 14, "type": "timeseries", "title": "WS Reconnects / FIX Session Kills",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "sum by (reason) (increase(gateway_ws_reconnects_total[5m]))", "legendFormat": "reconnect: {{reason}}" },
+        { "expr": "increase(fix_session_kills_total[5m])", "legendFormat": "fix session kills" }
+      ]
+    },
+    {
+      "id": 15, "type": "timeseries", "title": "FIX Messages Sent by Type / Chaos Drops",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        { "expr": "sum by (msg_type) (rate(fix_msgs_sent_total[1m]))", "legendFormat": "sent 35={{msg_type}}" },
+        { "expr": "rate(gateway_chaos_dropped_total[1m])", "legendFormat": "chaos drops/s" },
+        { "expr": "rate(gateway_stream_publish_errors_total[1m])", "legendFormat": "publish errors/s" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}
