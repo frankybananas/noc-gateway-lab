@@ -146,16 +146,30 @@ class FixSession:
 class FixEngine:
     def __init__(self) -> None:
         self.session: FixSession | None = None
+        self._session_state = 0
         self.chaos = ChaosState()
         self.redis = aioredis.from_url(config.REDIS_URL, decode_responses=True)
 
     # --- session layer ---
     async def _set_session_state(self, value: int) -> None:
+        self._session_state = value
         SESSION_STATE.set(value)
         try:
             await self.redis.setex(config.TRAFFIC_SESSION_STATE_KEY, 60, value)
         except Exception as exc:
             log.warning("failed to publish session state: %s", exc)
+
+    async def session_state_refresher(self) -> None:
+        """Keep the shared session-state Redis key alive while the value is
+        unchanged. The TTL (60s) would otherwise expire mid-session, causing
+        the ingress to think the FIX session is down.
+        """
+        while True:
+            try:
+                await self._set_session_state(self._session_state)
+            except Exception as exc:
+                log.warning("session state refresh failed: %s", exc)
+            await asyncio.sleep(5)
 
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         session = FixSession(reader, writer)
@@ -351,6 +365,7 @@ class FixEngine:
                 self.heartbeat_loop(),
                 self.lag_sampler(),
                 self.chaos_watch(),
+                self.session_state_refresher(),
             )
 
 
