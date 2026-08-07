@@ -57,7 +57,7 @@
     {
       "id": 99, "type": "stat", "title": "US Market Open",
       "description": "1 = NYSE regular hours (09:30-16:00 ET, Mon-Fri), 0 = closed. Staleness alerts are gated on this to avoid weekend pages.",
-      "gridPos": { "h": 4, "w": 1, "x": 11, "y": 0 },
+      "gridPos": { "h": 4, "w": 2, "x": 11, "y": 0 },
       "targets": [{ "expr": "market_open" }],
       "fieldConfig": { "defaults": { "mappings": [
         { "type": "value", "options": {
@@ -67,7 +67,7 @@
     },
     {
       "id": 4, "type": "stat", "title": "Active Chaos Faults",
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "gridPos": { "h": 4, "w": 3, "x": 13, "y": 0 },
       "targets": [{ "expr": "chaos_active_faults" }],
       "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [
         { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } }
