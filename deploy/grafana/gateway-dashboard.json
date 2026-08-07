@@ -73,8 +73,8 @@
         { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } }
     },
     {
-      "id": 5, "type": "stat", "title": "Stream Depth (md.ticks)",
-      "description": "XACK does not delete entries: depth saturates at MAXLEN (~100k) during market hours by design. Backpressure signal = consumer lag, not depth.",
+      "id": 5, "type": "stat", "title": "Stream retention (XLEN, MAXLEN ≈ 100k)",
+      "description": "Total entries retained in the capped md.ticks stream. This is a memory/retention bound, NOT a backlog metric — XACK does not delete entries.",
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
       "targets": [{ "expr": "gateway_stream_depth" }],
       "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [
@@ -122,11 +122,12 @@
       "fieldConfig": { "defaults": { "unit": "s" } }
     },
     {
-      "id": 13, "type": "timeseries", "title": "Stream Depth & Consumer Lag (backpressure)",
+      "id": 13, "type": "timeseries", "title": "Backpressure: backlog entries + consumer time lag",
+      "description": "Pending (XACK not done) and undelivered (Redis XINFO lag) entries are the backlog. Consumer time lag is the source-of-truth backpressure signal.",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [
-        { "expr": "gateway_stream_depth", "legendFormat": "stream depth" },
-        { "expr": "fix_consumer_lag", "legendFormat": "consumer lag (entries, null under trim)" },
+        { "expr": "redis_group_pending_entries", "legendFormat": "pending entries" },
+        { "expr": "redis_group_undelivered_entries", "legendFormat": "undelivered (best-effort)" },
         { "expr": "fix_consumer_time_lag_seconds * 1000", "legendFormat": "consumer time lag (ms)" }
       ]
     },

@@ -52,6 +52,20 @@ E2E_LATENCY = Histogram(
     # tail really was. Buckets must exceed the worst latency you need to SEE.
     buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
 )
+E2E_LATENCY_MAX = Gauge(
+    "e2e_tick_latency_max_seconds",
+    "Max end-to-end latency observed since the last Prometheus scrape; resets on scrape.",
+)
+REDIS_PENDING = Gauge(
+    "redis_group_pending_entries",
+    "Messages delivered to the fix-engine consumer group but not yet XACKed.",
+)
+REDIS_UNDELIVERED = Gauge(
+    "redis_group_undelivered_entries",
+    "Messages in the stream not yet delivered to the fix-engine group "
+    "(Redis XINFO lag). NaN when the exact count is uncomputable due to "
+    "MAXLEN trimming.",
+)
 SESSION_KILLS = Counter("fix_session_kills_total", "Chaos-injected FIX session terminations")
 
 MDUPDATE_ACTION = {"trade": "0", "quote": "0"}  # 279=0 (New)
@@ -239,18 +253,24 @@ class FixEngine:
                 # If the data path is not expected to be active, the lag/staleness
                 # gauges become NaN so the dashboard shows grey "MARKET CLOSED"
                 # instead of a misleading green 0 on weekends or when no FIX
-                # client is logged on.
+                # client is logged on. Backlog metrics are still published because
+                # they describe Redis state, not active-traffic health.
                 expected = int(await self.redis.get(config.TRAFFIC_EXPECTED_KEY) or 0)
-                if expected != 1:
-                    CONSUMER_LAG.set(float("nan"))
-                    CONSUMER_TIME_LAG.set(float("nan"))
-                    continue
 
                 stream_info = await self.redis.xinfo_stream(config.STREAM_KEY)
                 last_generated = stream_info.get("last-generated-id")
                 for group in await self.redis.xinfo_groups(config.STREAM_KEY):
                     if group.get("name") != config.CONSUMER_GROUP:
                         continue
+                    parsed = parse_xinfo_group(group)
+                    REDIS_PENDING.set(parsed["pending"])
+                    REDIS_UNDELIVERED.set(parsed["lag"])
+
+                    if expected != 1:
+                        CONSUMER_LAG.set(float("nan"))
+                        CONSUMER_TIME_LAG.set(float("nan"))
+                        continue
+
                     # Entry-count lag: preserve null. Redis returns null when
                     # trimming makes the count uncomputable; coercing that to 0
                     # made the sensor "fail toward healthy" during a chaos drill.
