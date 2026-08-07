@@ -47,9 +47,12 @@ def parse_xinfo_group(group: dict) -> dict:
     undelivered count uncomputable. Coercing that to 0 would be a sensor that
     fails toward healthy, so it is surfaced as NaN instead.
     """
-    pending = group.get("pending")
+    # pending is a real counter from the consumer group (0 if no entries have
+    # been delivered), while lag can be None when MAXLEN trimming makes the
+    # exact undelivered count uncomputable.
+    pending = group.get("pending", 0)
     lag = group.get("lag")
     return {
-        "pending": int(pending) if pending is not None else float("nan"),
+        "pending": int(pending) if pending is not None else 0,
         "lag": int(lag) if lag is not None else float("nan"),
     }

@@ -126,8 +126,8 @@ Why it was a lie: 2.5 s was the largest *finite* bucket in the histogram.
 Observations above it land in `+Inf`; `histogram_quantile()` interpolates
 only within the top finite bucket and clamps.
 
-Fix: extend buckets to 30 s and add `e2e_tick_latency_max_seconds`, a
-scrape-resetting gauge that shows the true worst tick in each window.
+Fix: extend buckets to 30 s and add `gateway_e2e_tick_latency_max_seconds`,
+a scrape-resetting gauge that shows the true worst tick in each window.
 
 ### Lie 2 — "Consumer lag is 0" (null → 0 coercion)
 

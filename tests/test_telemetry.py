@@ -65,7 +65,8 @@ class TestParseXinfoGroup(unittest.TestCase):
 
     def test_both_missing(self):
         parsed = parse_xinfo_group({})
-        self.assertTrue(math.isnan(parsed["pending"]))
+        # pending has a sensible default of 0; lag is the one Redis may not know.
+        self.assertEqual(parsed["pending"], 0)
         self.assertTrue(math.isnan(parsed["lag"]))
 
 

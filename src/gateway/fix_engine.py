@@ -84,14 +84,14 @@ E2E_LATENCY = Histogram(
     # Upper buckets extended after a chaos drill showed p99 clamped at the
     # then-largest bucket (2.5s) during a latency fault, hiding how bad the
     # tail really was. Buckets must exceed the worst latency you need to SEE.
-    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
 )
 E2E_LATENCY_TRACKER = _MaxLatency()
-E2E_LATENCY_MAX = Gauge(
-    "e2e_tick_latency_max_seconds",
+GATEWAY_E2E_LATENCY_MAX = Gauge(
+    "gateway_e2e_tick_latency_max_seconds",
     "Max end-to-end latency observed since the last Prometheus scrape; resets on scrape.",
 )
-E2E_LATENCY_MAX.set_function(E2E_LATENCY_TRACKER.read)
+GATEWAY_E2E_LATENCY_MAX.set_function(E2E_LATENCY_TRACKER.read)
 REDIS_PENDING = Gauge(
     "redis_group_pending_entries",
     "Messages delivered to the fix-engine consumer group but not yet XACKed.",
