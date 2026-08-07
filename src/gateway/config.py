@@ -55,11 +55,17 @@ FIX_SENDER_COMP_ID = os.getenv("FIX_SENDER_COMP_ID", "NOCGW")
 FIX_TARGET_COMP_ID = os.getenv("FIX_TARGET_COMP_ID", "CLIENT1")
 FIX_HEARTBEAT_INTERVAL = int(os.getenv("FIX_HEARTBEAT_INTERVAL", "30"))
 
+# Traffic gating keys shared between ingress and fix-engine
+GATE_TRAFFIC_ON_MARKET_HOURS = os.getenv("GATE_TRAFFIC_ON_MARKET_HOURS", "1") == "1"
+TRAFFIC_SESSION_STATE_KEY = "gateway:traffic:session_state"
+TRAFFIC_EXPECTED_KEY = "gateway:traffic:expected"
+
 # Chaos flag keys in Redis
 CHAOS_LATENCY_KEY = "chaos:latency_ms"
 CHAOS_DROP_KEY = "chaos:drop_percent"
 CHAOS_WS_DISCONNECT_KEY = "chaos:ws_disconnect"
 CHAOS_FIX_KILL_KEY = "chaos:fix_kill"
+CHAOS_ANNOTATION_HASH = "chaos:annotations"
 
 
 def setup_logging(service: str) -> logging.Logger:

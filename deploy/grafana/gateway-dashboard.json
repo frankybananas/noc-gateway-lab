@@ -43,11 +43,14 @@
     },
     {
       "id": 3, "type": "stat", "title": "Feed Staleness (s)",
-      "description": "Seconds since last data message. Alert if > 60s during market hours only (see market_open gauge).",
+      "description": "Seconds since last data message. NaN when no market data is expected (market closed or FIX not logged on).",
       "gridPos": { "h": 4, "w": 3, "x": 8, "y": 0 },
-      "targets": [{ "expr": "time() - gateway_feed_last_message_timestamp_seconds" }],
-      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [
-        { "color": "green", "value": null },
+      "targets": [{ "expr": "gateway_feed_staleness_seconds", "legendFormat": "staleness" }],
+      "fieldConfig": { "defaults": { "unit": "s", "noValue": "MARKET CLOSED", "mappings": [
+        { "type": "special", "options": { "match": "null", "result": { "text": "MARKET CLOSED", "color": "gray" } } }
+      ], "thresholds": { "mode": "absolute", "steps": [
+        { "color": "gray", "value": null },
+        { "color": "green", "value": 0 },
         { "color": "yellow", "value": 30 },
         { "color": "red", "value": 60 } ] } } }
     },
@@ -79,11 +82,14 @@
     },
     {
       "id": 6, "type": "stat", "title": "FIX Consumer Time Lag",
-      "description": "Age gap between newest stream entry and newest entry delivered to the FIX engine, from stream ID timestamps. Trim-proof (the entry-count lag reads null under MAXLEN trimming).",
+      "description": "Age gap between newest stream entry and newest entry delivered to the FIX engine, from stream ID timestamps. NaN when no market data is expected.",
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
-      "targets": [{ "expr": "fix_consumer_time_lag_seconds" }],
-      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [
-        { "color": "green", "value": null },
+      "targets": [{ "expr": "fix_consumer_time_lag_seconds", "legendFormat": "lag" }],
+      "fieldConfig": { "defaults": { "unit": "s", "noValue": "MARKET CLOSED", "mappings": [
+        { "type": "special", "options": { "match": "null", "result": { "text": "MARKET CLOSED", "color": "gray" } } }
+      ], "thresholds": { "mode": "absolute", "steps": [
+        { "color": "gray", "value": null },
+        { "color": "green", "value": 0 },
         { "color": "yellow", "value": 2 },
         { "color": "red", "value": 10 } ] } } }
     },

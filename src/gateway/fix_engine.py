@@ -22,6 +22,7 @@ from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from gateway import config
 from gateway.common.chaos import ChaosState, consume_one_shot, poll_chaos_flags
+from gateway.common.telemetry import parse_xinfo_group
 
 log = config.setup_logging("fix-engine")
 
@@ -99,6 +100,13 @@ class FixEngine:
         self.redis = aioredis.from_url(config.REDIS_URL, decode_responses=True)
 
     # --- session layer ---
+    async def _set_session_state(self, value: int) -> None:
+        SESSION_STATE.set(value)
+        try:
+            await self.redis.setex(config.TRAFFIC_SESSION_STATE_KEY, 60, value)
+        except Exception as exc:
+            log.warning("failed to publish session state: %s", exc)
+
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         session = FixSession(reader, writer)
         if self.session is not None:
@@ -106,7 +114,7 @@ class FixEngine:
             await session.close()
             return
         self.session = session
-        SESSION_STATE.set(1)
+        await self._set_session_state(1)
         log.info("TCP connection from %s", session.peer)
         try:
             await self._session_loop(session)
@@ -115,7 +123,7 @@ class FixEngine:
         finally:
             await session.close()
             self.session = None
-            SESSION_STATE.set(0)
+            await self._set_session_state(0)
             log.info("session with %s closed", session.peer)
 
     async def _session_loop(self, session: FixSession) -> None:
@@ -136,7 +144,7 @@ class FixEngine:
             reply.append_pair(108, config.FIX_HEARTBEAT_INTERVAL)
             await session.send(reply)
             session.logged_on = True
-            SESSION_STATE.set(2)
+            await self._set_session_state(2)
             log.info("logon complete with %s", session.peer)
         elif msg_type == "1":  # TestRequest -> Heartbeat echoing 112
             reply = session.build("0")
@@ -228,6 +236,16 @@ class FixEngine:
     async def lag_sampler(self) -> None:
         while True:
             try:
+                # If the data path is not expected to be active, the lag/staleness
+                # gauges become NaN so the dashboard shows grey "MARKET CLOSED"
+                # instead of a misleading green 0 on weekends or when no FIX
+                # client is logged on.
+                expected = int(await self.redis.get(config.TRAFFIC_EXPECTED_KEY) or 0)
+                if expected != 1:
+                    CONSUMER_LAG.set(float("nan"))
+                    CONSUMER_TIME_LAG.set(float("nan"))
+                    continue
+
                 stream_info = await self.redis.xinfo_stream(config.STREAM_KEY)
                 last_generated = stream_info.get("last-generated-id")
                 for group in await self.redis.xinfo_groups(config.STREAM_KEY):

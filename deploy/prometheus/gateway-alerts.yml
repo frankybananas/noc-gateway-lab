@@ -6,9 +6,10 @@ groups:
   - name: noc-gateway
     rules:
       - alert: FeedSilentDuringMarketHours
-        # Only pages when the feed is quiet AND the US market is open.
-        # Guards against the classic "weekend page" / "Saturday 3am alert".
-        expr: (time() - gateway_feed_last_message_timestamp_seconds) > 60 and market_open == 1
+        # Only pages when the feed is quiet AND traffic is expected.
+        # NaN is not a firing value, and the gateway_traffic_expected gate
+        # explicitly disables the alert outside market hours / when not logged on.
+        expr: gateway_feed_staleness_seconds > 60 and on() (gateway_traffic_expected == 1)
         for: 1m
         labels:
           severity: page
@@ -19,8 +20,9 @@ groups:
       - alert: HighConsumerTimeLag
         # Time lag is trim-proof (unlike the entry-count lag) and is the
         # correct backpressure signal. 5s means the consumer is materially
-        # behind during active trading; 10s is a page.
-        expr: fix_consumer_time_lag_seconds > 5
+        # behind during active trading; 10s is a page. Gated on traffic_expected
+        # so the alert is not evaluated when FIX is not logged on.
+        expr: fix_consumer_time_lag_seconds > 5 and on() (gateway_traffic_expected == 1)
         for: 1m
         labels:
           severity: page

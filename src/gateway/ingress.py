@@ -36,6 +36,7 @@ from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from gateway import config
 from gateway.common.chaos import ChaosState, consume_one_shot, poll_chaos_flags
+from gateway.common.telemetry import compute_traffic_expected, feed_staleness
 
 log = config.setup_logging("ingress")
 
@@ -48,7 +49,11 @@ MSGS_RECEIVED = Counter(
 PROCESSING_LATENCY = Histogram(
     "gateway_processing_latency_seconds",
     "Time to parse, normalize and publish one WS frame",
-    buckets=[0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5],
+    # Buckets extended after game day #2: the original top bucket (0.5s)
+    # clamped the p99 around 400ms during a 200ms chaos fault, because the
+    # injected sleep lands in the 0.1-0.5s bucket and histogram_quantile
+    # interpolates toward the bucket top.
+    buckets=[0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
 )
 WS_RECONNECTS = Counter(
     "gateway_ws_reconnects_total", "WebSocket reconnect attempts", ["reason"]
@@ -78,6 +83,24 @@ MARKET_OPEN = Gauge(
     "US equity market hours (1 = open, 0 = closed). Used to gate staleness/"
     "data-loss alerts so a quiet Saturday does not page the on-call.",
 )
+FEED_STALENESS = Gauge(
+    "gateway_feed_staleness_seconds",
+    "Seconds since the last data message. NaN when no market data is expected "
+    "(market closed or FIX not logged on), so a quiet weekend is not confused "
+    "with a silent feed.",
+)
+TRAFFIC_EXPECTED = Gauge(
+    "gateway_traffic_expected",
+    "1 when feed is subscribed, FIX is logged on, and market is open; 0 "
+    "otherwise. Used to gate lag/staleness alerts and dashboard state.",
+)
+
+# Mutable state shared with the traffic sampler.
+_traffic = {
+    "connection_state": 0,
+    "market_open": 0.0,
+    "last_msg_ts": float("nan"),
+}
 
 
 async def stream_depth_sampler(r: aioredis.Redis) -> None:
@@ -102,6 +125,7 @@ async def market_hours_sampler() -> None:
     if ZoneInfo is None:
         log.warning("zoneinfo data unavailable; market_open metric disabled")
         MARKET_OPEN.set(float("nan"))
+        _traffic["market_open"] = float("nan")
         return
     tz = ZoneInfo("America/New_York")
     while True:
@@ -109,11 +133,41 @@ async def market_hours_sampler() -> None:
             now = datetime.datetime.now(tz)
             is_weekday = now.weekday() < 5
             is_open_hours = now.replace(hour=9, minute=30, second=0, microsecond=0) <= now < now.replace(hour=16, minute=0, second=0, microsecond=0)
-            MARKET_OPEN.set(1.0 if (is_weekday and is_open_hours) else 0.0)
+            value = 1.0 if (is_weekday and is_open_hours) else 0.0
+            MARKET_OPEN.set(value)
+            _traffic["market_open"] = value
         except Exception as exc:
             log.warning("market hours sample failed: %s", exc)
             MARKET_OPEN.set(float("nan"))
+            _traffic["market_open"] = float("nan")
         await asyncio.sleep(15)
+
+
+async def traffic_sampler(r: aioredis.Redis) -> None:
+    """Compute traffic_expected and feed staleness; also publish the signal
+    to Redis so the FIX engine can gate consumer time lag.
+
+    When no traffic is expected, FEED_STALENESS is set to NaN. This prevents
+    the dashboard from displaying a misleading green 0 on weekends or when
+    the FIX client is not logged on.
+    """
+    while True:
+        try:
+            session_state = int(await r.get(config.TRAFFIC_SESSION_STATE_KEY) or 0)
+            expected = compute_traffic_expected(
+                _traffic["connection_state"],
+                session_state,
+                _traffic["market_open"],
+                gate_on_market=config.GATE_TRAFFIC_ON_MARKET_HOURS,
+            )
+            TRAFFIC_EXPECTED.set(expected)
+            await r.setex(config.TRAFFIC_EXPECTED_KEY, 60, int(expected))
+
+            staleness = feed_staleness(time.time(), _traffic["last_msg_ts"], expected)
+            FEED_STALENESS.set(staleness)
+        except Exception as exc:
+            log.warning("traffic sampler failed: %s", exc)
+        await asyncio.sleep(5)
 
 
 def normalize(msg: dict) -> dict | None:
@@ -150,6 +204,7 @@ async def run_session(r: aioredis.Redis, chaos: ChaosState) -> None:
     async with websockets.connect(config.ALPACA_WS_URL, ping_interval=20, ping_timeout=20) as ws:
         conn_msg = await ws.recv()
         CONNECTION_STATE.set(1)
+        _traffic["connection_state"] = 1
         log.info("connection status: %s", conn_msg)
 
         await ws.send(json.dumps({"action": "auth", "key": api_key, "secret": secret_key}))
@@ -157,6 +212,7 @@ async def run_session(r: aioredis.Redis, chaos: ChaosState) -> None:
         if any(m.get("T") == "error" for m in auth_msg):
             raise RuntimeError(f"authentication failed: {auth_msg}")
         CONNECTION_STATE.set(2)
+        _traffic["connection_state"] = 2
         log.info("authenticated")
 
         await ws.send(
@@ -166,6 +222,7 @@ async def run_session(r: aioredis.Redis, chaos: ChaosState) -> None:
         )
         sub_msg = await ws.recv()
         CONNECTION_STATE.set(3)
+        _traffic["connection_state"] = 3
         log.info("subscribed: %s", sub_msg)
         log.info("gateway active; metrics on %s:%d", config.BIND_HOST, config.INGRESS_METRICS_PORT)
 
@@ -189,7 +246,9 @@ async def run_session(r: aioredis.Redis, chaos: ChaosState) -> None:
                 fields = normalize(msg)
                 if fields is None:
                     continue
-                LAST_MSG_TIMESTAMP.set(time.time())
+                ts = time.time()
+                LAST_MSG_TIMESTAMP.set(ts)
+                _traffic["last_msg_ts"] = ts
 
                 if chaos.should_drop():
                     CHAOS_DROPPED.inc()
@@ -215,12 +274,15 @@ async def main() -> None:
     # Initialize to process start so the staleness panel reads "seconds since
     # last data OR startup" instead of "seconds since the Unix epoch" (a
     # never-set gauge defaults to 0 and produces a 56-year staleness reading).
-    LAST_MSG_TIMESTAMP.set(time.time())
+    ts = time.time()
+    LAST_MSG_TIMESTAMP.set(ts)
+    _traffic["last_msg_ts"] = ts
     r = aioredis.from_url(config.REDIS_URL, decode_responses=True)
     chaos = ChaosState()
     asyncio.create_task(poll_chaos_flags(r, chaos))
     asyncio.create_task(stream_depth_sampler(r))
     asyncio.create_task(market_hours_sampler())
+    asyncio.create_task(traffic_sampler(r))
 
     backoff = 1.0
     while True:
@@ -233,6 +295,7 @@ async def main() -> None:
             reason = type(exc).__name__
             log.error("session error: %s", exc)
         CONNECTION_STATE.set(0)
+        _traffic["connection_state"] = 0
         WS_RECONNECTS.labels(reason=reason).inc()
         sleep_for = backoff + random.uniform(0, backoff / 2)
         log.info("reconnecting in %.1fs (reason=%s)", sleep_for, reason)
