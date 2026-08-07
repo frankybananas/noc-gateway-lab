@@ -60,6 +60,9 @@ GATE_TRAFFIC_ON_MARKET_HOURS = os.getenv("GATE_TRAFFIC_ON_MARKET_HOURS", "1") ==
 TRAFFIC_SESSION_STATE_KEY = "gateway:traffic:session_state"
 TRAFFIC_EXPECTED_KEY = "gateway:traffic:expected"
 
+# Chaos controller
+CHAOS_MAX_DURATION_S = int(os.getenv("CHAOS_MAX_DURATION_S", "3600"))
+
 # Chaos flag keys in Redis
 CHAOS_LATENCY_KEY = "chaos:latency_ms"
 CHAOS_DROP_KEY = "chaos:drop_percent"
