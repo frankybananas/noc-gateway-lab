@@ -12,7 +12,7 @@ Conventions:
 
 ## INC-1: Feed Silent (no market data arriving)
 
-**Detect:** Grafana "Feed Staleness" panel red; alert `time() - gateway_feed_last_message_timestamp_seconds > 60` during market hours.
+**Detect:** Grafana "Feed Staleness" panel red; alert `gateway_feed_staleness_seconds > 60 and on() (gateway_traffic_expected == 1)` during expected traffic.
 
 **Diagnose (in order):**
 1. Is it just a quiet market? IEX only streams Mon–Fri 09:30–16:00 ET.
@@ -56,17 +56,23 @@ Conventions:
 
 ---
 
-## INC-3: Redis Stream Depth Growing (backpressure)
+## INC-3: Redis Stream Backpressure
 
-**Detect:** "Stream Depth & Consumer Lag" trending up; alert `fix_consumer_lag > 10000`.
+**Detect:** "Backpressure: backlog entries + consumer time lag" trending up; alert `fix_consumer_time_lag_seconds > 5 and on() (gateway_traffic_expected == 1)`.
 
 **Diagnose:**
 1. Is the consumer alive? `systemctl status fix-engine`
-2. Is it consuming but slow? `docker exec noc-gateway-redis redis-cli XINFO GROUPS md.ticks`
-   — `pending` high = delivered-but-unacked (consumer stuck mid-processing);
-   `lag` high = not even read yet (consumer down or starved).
+2. Are messages actually backlogged? Look at `redis_group_pending_entries` and
+   `redis_group_undelivered_entries` in the backpressure panel. `pending` high
+   = delivered-but-unacked (consumer stuck mid-processing); `undelivered` high
+   = not even read yet (consumer down or starved). If `undelivered` is NaN,
+   the exact count is uncomputable due to MAXLEN trimming; use
+   `fix_consumer_time_lag_seconds` as the source of truth.
 3. Chaos latency injection makes the consumer artificially slow — check `/chaos/status`.
 4. Host resource exhaustion: `top`, existing node-exporter dashboards.
+
+**Interpretation rule:** a panel that cannot compute a value must show no data
+or NaN, never `0`. `0` is a value; `NaN` is an admission of uncertainty.
 
 **Resolve:**
 - Consumer down → restart `fix-engine`; consumer group resumes from last-acked ID (no data loss — that's the point of groups).

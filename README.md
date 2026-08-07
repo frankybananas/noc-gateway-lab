@@ -167,7 +167,7 @@ Full details and design rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 | Real-time ingest | asyncio WebSocket client, exponential-backoff reconnects, monotonic-clock latency measurement |
 | Message bus operations | Redis Streams with MAXLEN caps, consumer groups, XACK, lag/depth telemetry |
 | Exchange protocol fluency | FIX 4.4 session layer: Logon, Heartbeat/TestRequest, sequence numbers, Market Data Incremental Refresh (35=X) |
-| Observability | Prometheus counters/gauges/histograms, Grafana SLA dashboards, feed-staleness alerting |
+| Observability | Prometheus counters/gauges/histograms, Grafana SLA dashboards, feed-staleness alerting, no-null-coercion telemetry, traffic-expected gating |
 | Chaos engineering | API-injected latency / message loss / session kills, TTL-bounded faults, automatic Grafana annotations |
 | Linux operations | Hardened systemd units, non-root service user, localhost-only binding, secrets via EnvironmentFile |
 | Incident response | [NOC runbook](docs/RUNBOOK.md) with 6 detect→diagnose→resolve procedures, validated by chaos drills |

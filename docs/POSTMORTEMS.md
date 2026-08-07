@@ -109,9 +109,60 @@ this was predicted; all of it was discovered.
 
 ---
 
+## PM-3: Three ways my dashboard lied
+
+**Date found:** 2026-08-07 (spec review after game-day drills)
+
+This record is the consolidated form of the three measurement bugs above and
+serves as the rule the team now enforces: **a sensor that cannot see must say
+"I cannot see", never "all good".**
+
+### Lie 1 — "E2E p99 is 2.5 s" (histogram clamping)
+
+What it showed: the end-to-end latency p99 pinned at exactly 2.5 s during a
+200 ms latency injection. The real tail was larger.
+
+Why it was a lie: 2.5 s was the largest *finite* bucket in the histogram.
+Observations above it land in `+Inf`; `histogram_quantile()` interpolates
+only within the top finite bucket and clamps.
+
+Fix: extend buckets to 30 s and add `e2e_tick_latency_max_seconds`, a
+scrape-resetting gauge that shows the true worst tick in each window.
+
+### Lie 2 — "Consumer lag is 0" (null → 0 coercion)
+
+What it showed: `fix_consumer_lag` read 0 while the consumer was visibly
+falling behind.
+
+Why it was a lie: Redis `XINFO GROUPS` returns `lag: null` when `MAXLEN`
+trimming removes entries the group never read. The original code used
+`group.get("lag") or 0`, so a null ("unknown") became a green 0.
+
+Fix: preserve null as NaN; add `redis_group_pending_entries` and
+`redis_group_undelivered_entries`; and add a trim-proof
+`fix_consumer_time_lag_seconds` metric.
+
+### Lie 3 — "Green 0 at market close" (ungated metrics)
+
+What it showed: the feed staleness and consumer time-lag stat panels glowed
+0/1 s on a Saturday morning.
+
+Why it was a lie: the metrics had no concept of *expected* traffic. A
+perfectly healthy, idle system was being colored as a live but slightly stale
+feed.
+
+Fix: add `gateway_traffic_expected` (1 only when feed is SUBSCRIBED, FIX is
+LOGGED ON, and the US market is open); set `gateway_feed_staleness_seconds`
+and `fix_consumer_time_lag_seconds` to NaN when not expected; render no-data
+as grey "MARKET CLOSED" in Grafana; and gate the relevant alerts on
+`gateway_traffic_expected == 1`.
+
+---
+
 ## Re-validation log
 
 | Date | Drill | Result |
 |------|-------|--------|
 | 2026-08-05 | Chaos drill #1 (latency / drop / WS disconnect / FIX kill) | All faults recovered; PM-1, PM-2, F-1, F-2 discovered |
-| 2026-08-06 | Chaos drill #2 (same script, post-fix) | *scheduled — expect: e2e p99 resolves above 2.5 s; time lag visibly climbs and drains during latency fault* |
+| 2026-08-06 | Chaos drill #2 (same script, post-fix) | *scheduled — expect: e2e p99 resolves above 2.5 s; time lag visibly climbs and drains; ingress p99 resolves to ~200 ms instead of clamping at ~400 ms* |
+| 2026-08-07 | Spec-revision drill | *pending — expect: grey MARKET CLOSED when no traffic; backlog panel shows pending/undelivered + time lag; e2e max series visible above p99; fault regions shaded on timeline* |
