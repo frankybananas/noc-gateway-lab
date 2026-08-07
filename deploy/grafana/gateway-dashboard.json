@@ -113,13 +113,25 @@
     },
     {
       "id": 12, "type": "timeseries", "title": "End-to-End Tick SLA (WS ingest -> FIX send)",
+      "description": "p50/p95/p99 from classic histogram plus max observed per scrape. The max gauge is un-clampable and shows the true tail even if a percentile buckets out at 30s.",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "targets": [
         { "expr": "histogram_quantile(0.50, sum by (le) (rate(fix_end_to_end_latency_seconds_bucket[5m])))", "legendFormat": "p50" },
         { "expr": "histogram_quantile(0.95, sum by (le) (rate(fix_end_to_end_latency_seconds_bucket[5m])))", "legendFormat": "p95" },
-        { "expr": "histogram_quantile(0.99, sum by (le) (rate(fix_end_to_end_latency_seconds_bucket[5m])))", "legendFormat": "p99" }
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(fix_end_to_end_latency_seconds_bucket[5m])))", "legendFormat": "p99" },
+        { "expr": "e2e_tick_latency_max_seconds", "legendFormat": "max (p100)" }
       ],
-      "fieldConfig": { "defaults": { "unit": "s" } }
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "max (p100)" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "fill": "solid", "dash": [10, 10] } }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": 13, "type": "timeseries", "title": "Backpressure: backlog entries + consumer time lag",

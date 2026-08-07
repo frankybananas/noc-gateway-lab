@@ -14,6 +14,8 @@ not a certified FIX implementation.
 """
 
 import asyncio
+import math
+import threading
 import time
 
 import redis.asyncio as aioredis
@@ -44,6 +46,38 @@ CONSUMER_TIME_LAG = Gauge(
     "trimming (added after observing that the entry-count lag could read null "
     "under load when MAXLEN trimming made the exact count uncomputable).",
 )
+class _MaxLatency:
+    """Resets on Prometheus scrape: the function reads the current max and
+    clears it, so each scrape window reports the worst tick in that window.
+    Uses a lock because the scrape runs on a different thread than _process_tick.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._value = float("nan")
+
+    def observe(self, value: float) -> None:
+        with self._lock:
+            if math.isnan(self._value) or value > self._value:
+                self._value = value
+
+    def read(self) -> float:
+        with self._lock:
+            value = self._value
+            self._value = float("nan")
+            return value
+
+
+# Native-histogram feasibility note:
+#   prometheus_client 0.26.0 supports Native Histograms (Histogram with
+#   native_histogram_bucket_factor), and the user's Prometheus server is
+#   v2.53.0, which also supports the native histogram wire format. However,
+#   the current Prometheus instance is not known to be started with the
+#   --enable-feature=native-histograms flag, and the existing scrape is using
+#   the classic text format. Converting would risk breaking the dashboard if
+#   the feature is not enabled, so this histogram stays classic. The
+#   e2e_tick_latency_max_seconds gauge below provides an un-clampable view of
+#   the tail even if the p99 ever clamps.
 E2E_LATENCY = Histogram(
     "fix_end_to_end_latency_seconds",
     "Tick SLA: WS ingest timestamp to FIX message send",
@@ -52,10 +86,12 @@ E2E_LATENCY = Histogram(
     # tail really was. Buckets must exceed the worst latency you need to SEE.
     buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
 )
+E2E_LATENCY_TRACKER = _MaxLatency()
 E2E_LATENCY_MAX = Gauge(
     "e2e_tick_latency_max_seconds",
     "Max end-to-end latency observed since the last Prometheus scrape; resets on scrape.",
 )
+E2E_LATENCY_MAX.set_function(E2E_LATENCY_TRACKER.read)
 REDIS_PENDING = Gauge(
     "redis_group_pending_entries",
     "Messages delivered to the fix-engine consumer group but not yet XACKed.",
@@ -236,7 +272,9 @@ class FixEngine:
                     await session.send(self.tick_to_fix(session, fields))
                     ingest_ns = int(fields.get("ingest_ts_ns", "0"))
                     if ingest_ns:
-                        E2E_LATENCY.observe(time.time_ns() / 1e9 - ingest_ns / 1e9)
+                        latency = time.time_ns() / 1e9 - ingest_ns / 1e9
+                        E2E_LATENCY.observe(latency)
+                        E2E_LATENCY_TRACKER.observe(latency)
                 except Exception as exc:
                     log.warning("FIX send failed: %s", exc)
         await self.redis.xack(config.STREAM_KEY, config.CONSUMER_GROUP, record_id)
