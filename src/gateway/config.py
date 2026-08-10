@@ -55,11 +55,6 @@ FIX_SENDER_COMP_ID = os.getenv("FIX_SENDER_COMP_ID", "NOCGW")
 FIX_TARGET_COMP_ID = os.getenv("FIX_TARGET_COMP_ID", "CLIENT1")
 FIX_HEARTBEAT_INTERVAL = int(os.getenv("FIX_HEARTBEAT_INTERVAL", "30"))
 
-# Synthetic / simulation options for testing and screenshot runs outside market hours.
-SIMULATE_FEED = os.getenv("SIMULATE_FEED", "0") == "1"
-SIMULATE_FEED_RATE = float(os.getenv("SIMULATE_FEED_RATE", "50"))  # messages per second
-FORCE_MARKET_OPEN = os.getenv("FORCE_MARKET_OPEN", "0") == "1"
-
 # Traffic gating keys shared between ingress and fix-engine
 GATE_TRAFFIC_ON_MARKET_HOURS = os.getenv("GATE_TRAFFIC_ON_MARKET_HOURS", "1") == "1"
 TRAFFIC_SESSION_STATE_KEY = "gateway:traffic:session_state"

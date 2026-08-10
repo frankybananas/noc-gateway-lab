@@ -117,19 +117,11 @@ async def market_hours_sampler() -> None:
     """Update the market_open gauge every 15s.
 
     Uses US/Eastern (NYSE) clock: Mon-Fri 09:30-16:00 ET.
-    FORCE_MARKET_OPEN=1 overrides this for off-hours testing/screenshots.
     If the host lacks tzdata, the gauge stays NaN to fail visibly rather than
     silently default healthy. A production NOC should use an exchange-trading-
     calendar service (CME/CBOE publish holiday schedules) rather than wall
     clock, but wall clock is the right 80% solution for a lab.
     """
-    if config.FORCE_MARKET_OPEN:
-        log.warning("FORCE_MARKET_OPEN enabled; market_open hard-coded to 1")
-        while True:
-            MARKET_OPEN.set(1.0)
-            _traffic["market_open"] = 1.0
-            await asyncio.sleep(15)
-        return
     if ZoneInfo is None:
         log.warning("zoneinfo data unavailable; market_open metric disabled")
         MARKET_OPEN.set(float("nan"))
@@ -202,97 +194,6 @@ def normalize(msg: dict) -> dict | None:
             "ingest_ts_ns": str(time.time_ns()),
         }
     return None
-
-
-def _synthetic_trade(symbol: str) -> dict:
-    price = round(random.uniform(100.0, 200.0), 2)
-    return {
-        "T": "t",
-        "S": symbol,
-        "p": price,
-        "s": random.randint(1, 10000),
-        "t": datetime.datetime.utcnow().isoformat(),
-    }
-
-
-def _synthetic_quote(symbol: str) -> dict:
-    bid = round(random.uniform(100.0, 200.0), 2)
-    spread = round(random.uniform(0.01, 0.10), 2)
-    return {
-        "T": "q",
-        "S": symbol,
-        "bp": bid,
-        "bs": random.randint(1, 10000),
-        "ap": round(bid + spread, 2),
-        "as": random.randint(1, 10000),
-        "t": datetime.datetime.utcnow().isoformat(),
-    }
-
-
-async def synthetic_feed(r: aioredis.Redis, chaos: ChaosState) -> None:
-    """Generate fake ticks locally when SIMULATE_FEED=1.
-
-    Produces trades and quotes at SIMULATE_FEED_RATE msg/s, writes them to the
-    same Redis stream, and exposes the same metrics as the live Alpaca feed.
-    Supports chaos latency, message drop, and forced disconnect faults.
-    """
-    CONNECTION_STATE.set(3)
-    _traffic["connection_state"] = 3
-    log.info("synthetic feed active at %.1f msg/s", config.SIMULATE_FEED_RATE)
-
-    ticks_per_loop = max(1, int(config.SIMULATE_FEED_RATE * 0.1))
-    while True:
-        if chaos.ws_disconnect_requested:
-            await consume_one_shot(r, config.CHAOS_WS_DISCONNECT_KEY)
-            chaos.ws_disconnect_requested = False
-            CONNECTION_STATE.set(0)
-            _traffic["connection_state"] = 0
-            WS_RECONNECTS.labels(reason="chaos_disconnect").inc()
-            log.warning("CHAOS: synthetic WebSocket disconnect")
-            await asyncio.sleep(2)
-            CONNECTION_STATE.set(3)
-            _traffic["connection_state"] = 3
-            continue
-
-        # Build a batch of synthetic ticks, publish in one 100ms frame.
-        msgs = []
-        for _ in range(ticks_per_loop):
-            symbol = random.choice(config.SYMBOLS)
-            msgs.append(_synthetic_quote(symbol) if random.random() < 0.6 else _synthetic_trade(symbol))
-
-        start = time.perf_counter()
-        await chaos.apply_latency()
-
-        for msg in msgs:
-            msg_type = msg.get("T", "unknown")
-            symbol = msg.get("S", "unknown")
-            MSGS_RECEIVED.labels(symbol=symbol, msg_type=msg_type).inc()
-
-            fields = normalize(msg)
-            if fields is None:
-                continue
-            ts = time.time()
-            LAST_MSG_TIMESTAMP.set(ts)
-            _traffic["last_msg_ts"] = ts
-
-            if chaos.should_drop():
-                CHAOS_DROPPED.inc()
-                continue
-
-            try:
-                await r.xadd(
-                    config.STREAM_KEY,
-                    fields,
-                    maxlen=config.STREAM_MAXLEN,
-                    approximate=True,
-                )
-                STREAM_PUBLISHED.inc()
-            except Exception as exc:
-                STREAM_ERRORS.inc()
-                log.error("stream publish failed: %s", exc)
-
-        PROCESSING_LATENCY.observe(time.perf_counter() - start)
-        await asyncio.sleep(0.1)
 
 
 async def run_session(r: aioredis.Redis, chaos: ChaosState) -> None:
@@ -382,18 +283,6 @@ async def main() -> None:
     asyncio.create_task(stream_depth_sampler(r))
     asyncio.create_task(market_hours_sampler())
     asyncio.create_task(traffic_sampler(r))
-
-    if config.SIMULATE_FEED:
-        while True:
-            try:
-                await synthetic_feed(r, chaos)
-            except Exception as exc:
-                log.error("synthetic feed error: %s", exc)
-                CONNECTION_STATE.set(0)
-                _traffic["connection_state"] = 0
-                WS_RECONNECTS.labels(reason=type(exc).__name__).inc()
-                await asyncio.sleep(2)
-        return
 
     backoff = 1.0
     while True:
