@@ -150,3 +150,19 @@ curl -X POST localhost:9103/chaos/kill-fix-session
 # 6. Recovery: reset and verify all panels return to baseline.
 curl -X POST localhost:9103/chaos/reset
 ```
+
+## Latest Drill Evidence
+
+The latest market-hours drill captured the complete baseline → fault → effect → recovery sequence. The red shaded regions and dashed lines are chaos annotations; the panels show the corresponding system response.
+
+![One-hour chaos drill overview](media/Screenshots/11-overview-1h.png)
+
+| Step | Expected signal | Evidence |
+|---|---|---|
+| Baseline | Feed subscribed, FIX logged on, no active fault | [00 — baseline](media/Screenshots/00-baseline.png) |
+| Latency | E2E tail and consumer time lag rise under backpressure | [01 — 30 s latency](media/Screenshots/01-latency-during-30s.png), [02 — deep latency](media/Screenshots/02-latency-deep-90s.png) |
+| Latency recovery | Backlog drains after the fault expires | [03 — latency after](media/Screenshots/03-latency-after.png) |
+| Packet loss | Ingress and FIX-send rates diverge, then realign | [04 — drop during](media/Screenshots/04-drop-during.png), [05 — drop after](media/Screenshots/05-drop-after.png) |
+| WebSocket disconnect | Feed state drops and reconnect backoff restores it | [06 — disconnect](media/Screenshots/06-ws-disconnect-during.png), [07 — reconnect](media/Screenshots/07-ws-reconnect-after.png) |
+| FIX session kill | Session drops and accepts a clean new Logon | [08 — kill](media/Screenshots/08-fix-kill-during.png), [09 — re-Logon](media/Screenshots/09-fix-relogon-after.png) |
+| Reset | Chaos state clears and dashboard returns to nominal | [10 — reset baseline](media/Screenshots/10-reset-baseline.png) |

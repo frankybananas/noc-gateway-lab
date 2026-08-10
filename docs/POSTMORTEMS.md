@@ -34,6 +34,8 @@ you consider acceptable.
 saturated instrument, not a stable system. Validate the measurement range of
 every histogram against fault conditions, not just steady state.
 
+**Drill evidence:** [30-second latency injection](media/Screenshots/01-latency-during-30s.png) shows the end-to-end maximum and consumer time lag rising while the fault is active. [Deep-latency view](media/Screenshots/02-latency-deep-90s.png) shows the queueing effect across a longer injection.
+
 ---
 
 ## PM-2: Consumer lag gauge read 0 ("healthy") during heavy load

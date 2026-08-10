@@ -11,11 +11,12 @@ A simulated exchange market data gateway built to demonstrate the observability,
 1. [Quick start on your laptop](#quick-start-on-your-laptop)
 2. [What each service does](#what-each-service-does)
 3. [Architecture](#architecture)
-4. [What it demonstrates](#what-it-demonstrates)
-5. [Production deployment (Ubuntu VPS)](#production-deployment-ubuntu-vps)
-6. [Observability hookup](#observability-hookup)
-7. [Troubleshooting](#troubleshooting)
-8. [Honest scope notes](#honest-scope-notes)
+4. [Latest chaos-drill evidence](#latest-chaos-drill-evidence)
+5. [What it demonstrates](#what-it-demonstrates)
+6. [Production deployment (Ubuntu VPS)](#production-deployment-ubuntu-vps)
+7. [Observability hookup](#observability-hookup)
+8. [Troubleshooting](#troubleshooting)
+9. [Honest scope notes](#honest-scope-notes)
 
 ---
 
@@ -157,6 +158,26 @@ Alpaca IEX WS ──▶ ingress (asyncio) ──▶ Redis Streams ──▶ FIX 
 ```
 
 Full details and design rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+---
+
+## Latest Chaos-Drill Evidence
+
+A market-hours chaos drill exercised the entire recovery path: baseline, injected latency, packet loss, WebSocket disconnect, FIX session kill, and reset. The dashboard’s red annotations make the cause-and-effect sequence explicit; the one-hour view is the fastest way to assess the complete drill.
+
+![One-hour chaos drill overview](docs/media/Screenshots/11-overview-1h.png)
+
+| Test | What the screenshot demonstrates | Evidence |
+|---|---|---|
+| Baseline | Feed subscribed, FIX logged on, and no active fault before injection | [00 — baseline](docs/media/Screenshots/00-baseline.png) |
+| Latency | Queueing amplification, unbounded end-to-end maximum, and consumer time-lag growth | [01 — 30 s latency](docs/media/Screenshots/01-latency-during-30s.png), [02 — deep latency](docs/media/Screenshots/02-latency-deep-90s.png) |
+| Latency recovery | Consumer backlog drains while traffic remains expected | [03 — latency after](docs/media/Screenshots/03-latency-after.png) |
+| Packet loss | Ingress and FIX-send rates diverge during loss, then recover | [04 — drop during](docs/media/Screenshots/04-drop-during.png), [05 — drop after](docs/media/Screenshots/05-drop-after.png) |
+| WebSocket recovery | Upstream disconnect transitions to reconnect and restores the feed | [06 — disconnect](docs/media/Screenshots/06-ws-disconnect-during.png), [07 — reconnect](docs/media/Screenshots/07-ws-reconnect-after.png) |
+| FIX recovery | Session kill is followed by a clean new Logon | [08 — kill](docs/media/Screenshots/08-fix-kill-during.png), [09 — re-Logon](docs/media/Screenshots/09-fix-relogon-after.png) |
+| Reset | Active chaos clears and the dashboard returns to nominal | [10 — reset baseline](docs/media/Screenshots/10-reset-baseline.png) |
+
+For the operational procedure and the same evidence mapped to expected signals, see the [NOC runbook](docs/RUNBOOK.md#latest-drill-evidence). The measurement failures discovered during the drill and their fixes are recorded in [the postmortems](docs/POSTMORTEMS.md).
 
 ---
 
